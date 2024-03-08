@@ -170,7 +170,7 @@ summary(model_ss)
 
 # Estimate all-in-one IV model
 # This includes a degree of freedom correction
-model_iv <- feols(pc_rep ~ rain_historical | 0 | turnout ~ rain_election, data = df)
+model_iv <- feols(pc_rep ~ rain_historical | 0 | turnout ~ rain_election, data=df)
 summary(model_iv)
 
 # Estimate reduced form
