@@ -162,7 +162,7 @@ model_fs <- feols(turnout ~ rain_election + rain_historical | 0, data=df)
 summary(model_fs)
 
 # Save predicted turnout
-df$turnout_pred <- predict(reg_fs)
+df$turnout_pred <- predict(model_fs)
 
 # Estimate second stage
 model_ss <- feols(pc_rep ~ turnout_pred + rain_historical | 0, data=df)
