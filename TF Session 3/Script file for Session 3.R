@@ -85,7 +85,7 @@ df <- df %>% mutate(
 
 # Select variables of interest
 df <- df %>%
-  select(caseid, commonweight, age, age_over65, gender, race_eth,
+  select(caseid, commonweight, age, age_center, age_over65, gender, race_eth,
          education, marital, public_ins, public_option)
 
 # Eliminate cases with missing data
@@ -102,7 +102,7 @@ write.csv(df, "Sample dataset.csv")
 plot_rd_1 <- ggplot() +
   
   # Threshold line
-  geom_vline(xintercept=THRESHOLD, linetype="dashed") +
+  geom_vline(xintercept=65, linetype="dashed") +
   
   # Binned scatterplots for each side of 65
   stat_binmean(n=1000, data=subset(df, age < 65),
@@ -157,7 +157,7 @@ df <- mutate(df, predictions = model_3$fitted.values)
 plot_rd_2 <- ggplot() +
   
   # Threshold line
-  geom_vline(xintercept=THRESHOLD, linetype="dashed") +
+  geom_vline(xintercept=65, linetype="dashed") +
   
   # Binned scatterplots for each side of 65
   stat_binmean(n=1000, data=subset(df, age < 65),
@@ -201,7 +201,7 @@ df <- mutate(df, predictions_sq = model_4$fitted.values)
 plot_rd_3 <- ggplot() +
   
   # Threshold line
-  geom_vline(xintercept=THRESHOLD, linetype="dashed") +
+  geom_vline(xintercept=65, linetype="dashed") +
   
   # Binned scatterplots for each side of 65
   stat_binmean(n=1000, data=subset(df, age < 65),
