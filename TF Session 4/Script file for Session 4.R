@@ -9,11 +9,13 @@ rm(list = ls())
 
 # Install packages
 # install.packages("glmnet")
+# install.packages("rsample")
 
 # Load packages
 library(here)         # Working directory
 library(readstata13)  # Dataset tools
 library(tidyverse)    # Analysis tools
+library(rsample)      # Analysis tools
 library(fixest)       # Modeling tools
 library(glmnet)       # Modeling tools
 library(ggplot2)      # Graphing tools
@@ -114,111 +116,79 @@ plot_1 <- ggplot(data=df, aes(x=party_scale)) +
                      breaks = seq(0,5000,1000))
 
 # Export figure
-ggsave(plot=plot_1, file="Example graph 1.pdf",
+ggsave(plot=plot_1, file="Example graph.pdf",
        width=3, height=3.5, units='in', dpi=600)
 
 ##############################################################################
-# Regression exploration
+# OLS regression exploration
 ##############################################################################
+
+# Designate training and test sets
+set.seed(1234)
+split    <- initial_split(df, 0.7)
+df_train <- training(split)
+df_test  <- testing(split)
 
 # OLS regression
-model_1 <- feols(party_scale ~ age + gender + race_eth + education, data=df)
+model_1 <- lm(party_scale ~ gender, data=df_train)
 summary(model_1)
 
-# OLS regression with controls
-model_2 <- feols(public_option ~ age_over65 + gender + race_eth +
-                   education + marital | 0, data=df, vcov="HC1")
+# In-sample prediction & MSE
+df_train$predict <- predict(model_1, df_train)
+df_train %>% summarise(mse = mean((party_scale - predict)^2))
+
+# Out-of-sample prediction & MSE
+df_test$predict <- predict(model_1, df_test)
+df_test %>% summarise(mse = mean((party_scale - predict)^2))
+
+
+# OLS regression
+model_2 <- lm(party_scale ~ age + gender + race_eth + education, data=df_train)
 summary(model_2)
 
-# Regression discontinuity: Manual, linear
-model_3 <- feols(public_option ~ age_over65 + age_center +
-                   age_over65*age_center | 0, data=df, vcov="HC1")
+# In-sample prediction & MSE
+df_train$predict_2 <- predict(model_2, df_train)
+df_train %>% summarise(mse = mean((party_scale - predict_2)^2))
+
+# Out-of-sample prediction & MSE
+df_test$predict_2 <- predict(model_2, df_test)
+df_test %>% summarise(mse = mean((party_scale - predict_2)^2))
+
+
+# OLS regression
+model_3 <- lm(party_scale ~ age*gender*race_eth*education*marital*public_ins*public_option, data=df_train)
 summary(model_3)
 
-# Save predictions
-df <- mutate(df, predictions = model_3$fitted.values)
+# In-sample prediction & MSE
+df_train$predict_3 <- predict(model_3, df_train)
+df_train %>% summarise(mse = mean((party_scale - predict_3)^2))
 
-# Plot predictions against true values
-plot_rd_2 <- ggplot() +
-  
-  # Threshold line
-  geom_vline(xintercept=65, linetype="dashed") +
-  
-  # Binned scatterplots for each side of 65
-  stat_binmean(n=1000, data=subset(df, age < 65),
-               aes(x=age, y=public_option), size=1) +
-  stat_binmean(n=1000, data=subset(df, age > 65 & age <= 90),
-               aes(x=age, y=public_option), size=1) +
-  
-  # Predicted support
-  geom_point(data=df, aes(x=age, y=predictions), color="red", size=1) +
-  
-  # Cosmetic modifications
-  xlab("Age") + ylab("Support for a public option in Medicare") +
-  coord_cartesian(xlim=c(18,90), ylim=c(0,1)) +
-  theme_light() +
-  theme(text = element_text(size = 10, face = "bold")) +
-  scale_x_continuous(breaks = seq(0, 100, 10)) +
-  scale_y_continuous(breaks = seq(0, 1, 0.2),
-                     labels = function(x) paste0(x*100,"%"))
-
-# Export figure
-ggsave(plot=plot_rd_2, file="Example graph 2.pdf",
-       width=4, height=3.5, units='in', dpi=600)
+# Out-of-sample prediction & MSE
+df_test$predict_3 <- predict(model_3, df_test)
+df_test %>% summarise(mse = mean((party_scale - predict_3)^2))
 
 ##############################################################################
-# Advanced regression discontinuity: Quadratic
+# LASSO regression
 ##############################################################################
 
-# Square centered age variable
-df$age_center_sq <- (df$age_center)^2
+# Set the variables that are "fair game"
+Y <- df_train$party_scale
+X <- data.matrix(df_train[, c("age", "gender", "race_eth", "education",
+                              "marital", "public_ins", "public_option")])
 
-# Regression discontinuity: Manual, quadratic
-model_4 <- feols(public_option ~ age_over65 + age_center + age_center_sq +
-                   age_over65*age_center + age_over65*age_center_sq |
-                   0, data=df, vcov="HC1")
-summary(model_4)
+# LASSO regression
+lasso <- cv.glmnet(x=X, y=Y)
+plot(lasso); log(lasso$lambda.min)
 
-# Save predictions
-df <- mutate(df, predictions_sq = model_4$fitted.values)
+# In-sample prediction & MSE
+df_train$predict_4 <- predict(lasso, newx=X, s="lambda.min")[, 1]
+df_train %>% summarise(mse = mean((party_scale - predict_4)^2))
 
-# Plot predictions against true values
-plot_rd_3 <- ggplot() +
-  
-  # Threshold line
-  geom_vline(xintercept=65, linetype="dashed") +
-  
-  # Binned scatterplots for each side of 65
-  stat_binmean(n=1000, data=subset(df, age < 65),
-               aes(x=age, y=public_option), size=1) +
-  stat_binmean(n=1000, data=subset(df, age > 65 & age <= 90),
-               aes(x=age, y=public_option), size=1) +
-  
-  # Predicted support
-  geom_point(data=df, aes(x=age, y=predictions_sq),
-             color="red", size=1) +
-  
-  # Cosmetic modifications
-  xlab("Age") + ylab("Support for a public option in Medicare") +
-  coord_cartesian(xlim=c(18,90), ylim=c(0,1)) +
-  theme_light() +
-  theme(text = element_text(size = 10, face = "bold")) +
-  scale_x_continuous(breaks = seq(0, 100, 10)) +
-  scale_y_continuous(breaks = seq(0, 1, 0.2),
-                     labels = function(x) paste0(x*100,"%"))
+# Get X variables of test set
+X_test <- data.matrix(df_test[, c("age", "gender", "race_eth", "education",
+                                  "marital", "public_ins", "public_option")])
 
-# Export figure
-ggsave(plot=plot_rd_3, file="Example graph 3.pdf",
-       width=4, height=3.5, units='in', dpi=600)
+# Out-of-sample prediction & MSE
+df_test$predict_4 <- predict(lasso, newx=X_test, s="lambda.min")[, 1]
+df_test %>% summarise(mse = mean((party_scale - predict_4)^2))
 
-##############################################################################
-# Advanced regression discontinuity: Local linear regression
-##############################################################################
-
-# Load library
-library(rdrobust)
-
-# Regression discontinuity: Data-driven bandwidths
-model_5 <- rdrobust(df$public_option, df$age, c=65,
-                    p=1, kernel="triangular")
-summary(model_5)
