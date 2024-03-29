@@ -191,4 +191,3 @@ X_test <- data.matrix(df_test[, c("age", "gender", "race_eth", "education",
 # Out-of-sample prediction & MSE
 df_test$predict_4 <- predict(lasso, newx=X_test, s="lambda.min")[, 1]
 df_test %>% summarise(mse = mean((party_scale - predict_4)^2))
-
