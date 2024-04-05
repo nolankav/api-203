@@ -19,6 +19,7 @@ library(rsample)      # Analysis tools
 library(fixest)       # Modeling tools
 library(glmnet)       # Modeling tools
 library(ggplot2)      # Graphing tools
+library(pROC)         # ROC tools
 library(modelsummary) # Table tools
 
 ##############################################################################
@@ -104,8 +105,8 @@ df <- df %>% mutate(
 
 # Select variables of interest
 df <- df %>%
-  select(caseid, commonweight, age, gender, race_eth, education,
-         marital, party_scale, public_ins, public_option)
+  select(caseid, commonweight, age, gender, race_eth, education, marital,
+         employment, device, republican, public_ins, public_option)
 
 # Eliminate cases with missing data
 df <- df[complete.cases(df), ]
@@ -114,26 +115,26 @@ df <- df[complete.cases(df), ]
 write.csv(df, "Sample dataset.csv")
 
 ##############################################################################
-# Graph of party scale
+# Graph of parties
 ##############################################################################
 
 # Generate bar plot of parties
-plot_1 <- ggplot(data=df, aes(x=party_scale)) +
+plot_1 <- ggplot(data=df, aes(x=republican)) +
   geom_bar(stat="count") +
-  xlab("Party identification scale\n(Strong Rep. to strong Dem.)") +
+  xlab("Identifies as Republican") +
   ylab("Count of respondents") +
   theme_light() +
   theme(text = element_text(size = 10, face = "bold")) +
   scale_x_continuous(breaks = seq(-3, 3, 1)) +
-  scale_y_continuous(limits = c(0,5000),
-                     breaks = seq(0,5000,1000))
+  scale_y_continuous(limits = c(0,14000),
+                     breaks = seq(0,15000,2000))
 
 # Export figure
-ggsave(plot=plot_1, file="Example graph.pdf",
-       width=3, height=3.5, units='in', dpi=600)
+ggsave(plot=plot_1, file="Example graph 1.pdf",
+       width=2.25, height=3.5, units='in', dpi=600)
 
 ##############################################################################
-# OLS regression exploration
+# GLM regression exploration
 ##############################################################################
 
 # Designate training and test sets
@@ -142,65 +143,84 @@ split    <- initial_split(df, 0.7)
 df_train <- training(split)
 df_test  <- testing(split)
 
-# OLS regression
-model_1 <- lm(party_scale ~ gender, data=df_train)
+# Logit regression
+model_1 <- glm(republican ~ age + gender + race_eth + education + marital +
+                 employment + device, data=df_train, family="binomial")
 summary(model_1)
 
-# In-sample prediction & MSE
-df_train$predict <- predict(model_1, df_train)
-df_train %>% summarise(mse = mean((party_scale - predict)^2))
+# In-sample prediction
+df_train$predict <- predict(model_1, df_train, type="response")
 
-# Out-of-sample prediction & MSE
-df_test$predict <- predict(model_1, df_test)
-df_test %>% summarise(mse = mean((party_scale - predict)^2))
+# Histogram of predictions
+plot_2 <- ggplot(df_train, aes(x=predict)) +
+  geom_histogram() +
+  theme_light() +
+  theme(text = element_text(size = 10, face = "bold")) +
+  xlab("Predicted probability for Republican") +
+  ylab("Count")
+print(plot_2)
 
+# Export figure
+ggsave(plot=plot_2, file="Example graph 2.pdf",
+       width=4, height=3.5, units='in', dpi=600)
 
-# OLS regression
-model_2 <- lm(party_scale ~ age + gender + race_eth + education, data=df_train)
-summary(model_2)
+# Set potential thresholds
+df_train <- df_train %>% mutate(
+  threshold_1 = case_when(
+    predict > 0.4 ~ 1, TRUE ~ 0),
+  threshold_2 = case_when(
+    predict > 0.2 ~ 1, TRUE ~ 0
+  ))
 
-# In-sample prediction & MSE
-df_train$predict_2 <- predict(model_2, df_train)
-df_train %>% summarise(mse = mean((party_scale - predict_2)^2))
+# Evaluate thresholds
+table(df_train$republican, df_train$threshold_1)
+table(df_train$republican, df_train$threshold_2)
 
-# Out-of-sample prediction & MSE
-df_test$predict_2 <- predict(model_2, df_test)
-df_test %>% summarise(mse = mean((party_scale - predict_2)^2))
+# Generate ROC curve for training set
+roc_train <- roc(df_train$republican, df_train$predict)
+roc_train$auc
 
+# Plot ROC curve
+plot_3 <- ggroc(roc_train) +
+  theme_light() +
+  theme(text = element_text(size = 10, face = "bold")) +
+  geom_abline(slope=1, intercept=1, linetype="dashed") +
+  xlab("Specificity") +
+  ylab("Sensitivity")
+print(plot_3)
 
-# OLS regression
-model_3 <- lm(party_scale ~ age*gender*race_eth*education*marital*public_ins*public_option, data=df_train)
-summary(model_3)
+# Export figure
+ggsave(plot=plot_3, file="Example graph 3.pdf",
+       width=4, height=4, units='in', dpi=600)
 
-# In-sample prediction & MSE
-df_train$predict_3 <- predict(model_3, df_train)
-df_train %>% summarise(mse = mean((party_scale - predict_3)^2))
+# Out-of-sample prediction
+df_test$predict <- predict(model_1, df_test, type="response")
 
-# Out-of-sample prediction & MSE
-df_test$predict_3 <- predict(model_3, df_test)
-df_test %>% summarise(mse = mean((party_scale - predict_3)^2))
+# Set potential thresholds
+df_test <- df_test %>% mutate(
+  threshold_1 = case_when(
+    predict > 0.4 ~ 1, TRUE ~ 0),
+  threshold_2 = case_when(
+    predict > 0.2 ~ 1, TRUE ~ 0
+  ))
 
-##############################################################################
-# LASSO regression
-##############################################################################
+# Evaluate thresholds
+table(df_test$republican, df_test$threshold_1)
+table(df_test$republican, df_test$threshold_2)
 
-# Set the variables that are "fair game"
-Y <- df_train$party_scale
-X <- data.matrix(df_train[, c("age", "gender", "race_eth", "education",
-                              "marital", "public_ins", "public_option")])
+# Generate ROC curve for test set
+roc_test <- roc(df_test$republican, df_test$predict)
+roc_test$auc
 
-# LASSO regression
-lasso <- cv.glmnet(x=X, y=Y)
-plot(lasso); log(lasso$lambda.min)
+# Plot ROC curve
+plot_4 <- ggroc(roc_test) +
+  theme_light() +
+  theme(text = element_text(size = 10, face = "bold")) +
+  geom_abline(slope=1, intercept=1, linetype="dashed") +
+  xlab("Specificity") +
+  ylab("Sensitivity")
+print(plot_4)
 
-# In-sample prediction & MSE
-df_train$predict_4 <- predict(lasso, newx=X, s="lambda.min")[, 1]
-df_train %>% summarise(mse = mean((party_scale - predict_4)^2))
-
-# Get X variables of test set
-X_test <- data.matrix(df_test[, c("age", "gender", "race_eth", "education",
-                                  "marital", "public_ins", "public_option")])
-
-# Out-of-sample prediction & MSE
-df_test$predict_4 <- predict(lasso, newx=X_test, s="lambda.min")[, 1]
-df_test %>% summarise(mse = mean((party_scale - predict_4)^2))
+# Export figure
+ggsave(plot=plot_4, file="Example graph 4.pdf",
+       width=4, height=4, units='in', dpi=600)
