@@ -1,6 +1,6 @@
 # API 203: TF Session 3
 # N.M. Kavanagh
-# March 22, 2024
+# March 28, 2025
 
 # Please direct questions about this script file to nolankavanagh@fas.harvard.edu.
 
@@ -110,17 +110,9 @@ plot_rd_1 <- ggplot() +
   stat_binmean(n=1000, data=subset(df, age > 65 & age <= 90),
                aes(x=age, y=public_option), size=1) +
   
-  # Global polynomial fit lines
-  # Note: Limit to ≤90 years given sparse data over 90
-  geom_smooth(data=subset(df, age < 65),
-              aes(x=age, y=public_option), formula=y ~ poly(x, 4, raw=TRUE),
-              method = "lm", se = F, color="red") +
-  geom_smooth(data=subset(df, age > 65 & age <= 90),
-              aes(x=age, y=public_option), formula=y ~ poly(x, 4, raw=TRUE),
-              method = "lm", se = F, color="red") +
-  
   # Cosmetic modifications
-  xlab("Age") + ylab("Support for a public option in Medicare") +
+  xlab("Age") +
+  ylab("Support for a public option in Medicare") +
   coord_cartesian(xlim=c(18,90), ylim=c(0,1)) +
   theme_light() +
   theme(text = element_text(size = 10, face = "bold")) +
@@ -136,22 +128,21 @@ ggsave(plot=plot_rd_1, file="Example graph 1.pdf",
 # Regression exploration
 ##############################################################################
 
-# OLS regression without controls
+# Naive OLS regression
 model_1 <- feols(public_option ~ age_over65 | 0, data=df, vcov="HC1")
 summary(model_1)
 
-# OLS regression with controls
-model_2 <- feols(public_option ~ age_over65 + gender + race_eth +
-                   education + marital | 0, data=df, vcov="HC1")
+##############################################################################
+# Regression discontinuity: Linear
+##############################################################################
+
+# Regression discontinuity: Linear, all ages
+model_2 <- feols(public_option ~ age_over65 + age_center +
+                   age_over65*age_center | 0, data=df, vcov="HC1")
 summary(model_2)
 
-# Regression discontinuity: Manual, linear
-model_3 <- feols(public_option ~ age_over65 + age_center +
-                   age_over65*age_center | 0, data=df, vcov="HC1")
-summary(model_3)
-
 # Save predictions
-df <- mutate(df, predictions = model_3$fitted.values)
+df <- mutate(df, predictions = model_2$fitted.values)
 
 # Plot predictions against true values
 plot_rd_2 <- ggplot() +
@@ -182,20 +173,20 @@ ggsave(plot=plot_rd_2, file="Example graph 2.pdf",
        width=4, height=3.5, units='in', dpi=600)
 
 ##############################################################################
-# Advanced regression discontinuity: Quadratic
+# Regression discontinuity: Quadratic
 ##############################################################################
 
 # Square centered age variable
 df$age_center_sq <- (df$age_center)^2
 
-# Regression discontinuity: Manual, quadratic
-model_4 <- feols(public_option ~ age_over65 + age_center + age_center_sq +
+# Regression discontinuity: Quadratic, all ages
+model_3 <- feols(public_option ~ age_over65 + age_center + age_center_sq +
                    age_over65*age_center + age_over65*age_center_sq |
                    0, data=df, vcov="HC1")
-summary(model_4)
+summary(model_3)
 
 # Save predictions
-df <- mutate(df, predictions_sq = model_4$fitted.values)
+df <- mutate(df, predictions_sq = model_3$fitted.values)
 
 # Plot predictions against true values
 plot_rd_3 <- ggplot() +
@@ -224,6 +215,51 @@ plot_rd_3 <- ggplot() +
 
 # Export figure
 ggsave(plot=plot_rd_3, file="Example graph 3.pdf",
+       width=4, height=3.5, units='in', dpi=600)
+
+##############################################################################
+# Regression discontinuity: Limited bandwidth
+##############################################################################
+
+# Subset to 10 years before or after
+df_subset <- subset(df, age %in% c(55:75))
+
+# Regression discontinuity: Quadratic, limited bandwidth
+model_4 <- feols(public_option ~ age_over65 + age_center + age_center_sq +
+                   age_over65*age_center + age_over65*age_center_sq |
+                   0, data=df_subset, vcov="HC1")
+summary(model_4)
+
+# Save predictions
+df_subset <- mutate(df_subset, predictions_lim = model_4$fitted.values)
+
+# Plot predictions against true values
+plot_rd_4 <- ggplot() +
+  
+  # Threshold line
+  geom_vline(xintercept=65, linetype="dashed") +
+  
+  # Binned scatterplots for each side of 65
+  stat_binmean(n=1000, data=subset(df, age < 65),
+               aes(x=age, y=public_option), size=1) +
+  stat_binmean(n=1000, data=subset(df, age > 65 & age <= 90),
+               aes(x=age, y=public_option), size=1) +
+  
+  # Predicted support
+  geom_point(data=df_subset, aes(x=age, y=predictions_lim),
+             color="red", size=1) +
+  
+  # Cosmetic modifications
+  xlab("Age") + ylab("Support for a public option in Medicare") +
+  coord_cartesian(xlim=c(18,90), ylim=c(0,1)) +
+  theme_light() +
+  theme(text = element_text(size = 10, face = "bold")) +
+  scale_x_continuous(breaks = seq(0, 100, 10)) +
+  scale_y_continuous(breaks = seq(0, 1, 0.2),
+                     labels = function(x) paste0(x*100,"%"))
+
+# Export figure
+ggsave(plot=plot_rd_4, file="Example graph 4.pdf",
        width=4, height=3.5, units='in', dpi=600)
 
 ##############################################################################
