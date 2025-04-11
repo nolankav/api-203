@@ -210,11 +210,11 @@ roc_test <- roc(df_test$republican, df_test$predict)
 roc_test$auc
 
 # Plot ROC curve
-plot_4 <- ggroc(roc_test) +
+plot_4 <- ggroc(roc_test, legacy.axes=TRUE) +
   theme_light() +
   theme(text = element_text(size = 10, face = "bold")) +
-  geom_abline(slope=1, intercept=1, linetype="dashed") +
-  xlab("Specificity") +
+  geom_abline(slope=1, intercept=0, linetype="dashed") +
+  xlab("1-Specificity") +
   ylab("Sensitivity")
 print(plot_4)
 
