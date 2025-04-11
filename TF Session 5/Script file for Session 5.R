@@ -1,11 +1,8 @@
 # API 203: TF Session 5
 # N.M. Kavanagh
-# April 5, 2024
+# April 11, 2025
 
 # Please direct questions about this script file to nolankavanagh@fas.harvard.edu.
-
-# Clear R environment
-rm(list = ls())
 
 # Install packages
 # install.packages("glmnet")
@@ -181,11 +178,11 @@ roc_train <- roc(df_train$republican, df_train$predict)
 roc_train$auc
 
 # Plot ROC curve
-plot_3 <- ggroc(roc_train) +
+plot_3 <- ggroc(roc_train, legacy.axes=T) +
   theme_light() +
   theme(text = element_text(size = 10, face = "bold")) +
-  geom_abline(slope=1, intercept=1, linetype="dashed") +
-  xlab("Specificity") +
+  geom_abline(slope=1, intercept=0, linetype="dashed") +
+  xlab("1-Specificity") +
   ylab("Sensitivity")
 print(plot_3)
 
